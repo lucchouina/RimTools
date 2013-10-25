@@ -1,0 +1,84 @@
+#!/bin/sh
+# Builds a arm-eabi cross compiler for use on linux
+# host systems. This target has no file system or kernel.
+#
+TARGET="i386-linux-gnu"
+SRC="`pwd`"/source # package directory
+PREFIX=`pwd`/toolchain_i386 # final toolchain directory
+PARALLEL="-j 2"
+BINUTILS=binutils-2.20.1
+GCC=gcc-4.4.3
+GMP=gmp-5.0.1
+MPFR=mpfr-3.1.0
+MPC=mpc-0.8.2
+# Note: the 7.x series of GDB seem to have issues with psim...
+GDB=gdb-7.3.1
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/bin:$PREFIX/bin"
+# Before we do anything we need all the source files.
+# We keep them in one place and we never need to
+# download them twice if this build fails.
+mkdir $SRC
+cd $SRC
+echo "Dounloading source packages. This may take a while."
+echo
+wget -c http://ftp.gnu.org/gnu/binutils/$BINUTILS.tar.bz2
+wget -c ftp://ftp.gnu.org/gnu/gcc/$GCC/$GCC.tar.bz2
+wget -c ftp://ftp.gmplib.org/pub/$GMP/$GMP.tar.bz2
+wget -c http://www.mpfr.org/mpfr-current/$MPFR.tar.bz2
+wget -c http://www.multiprecision.org/mpc/download/$MPC.tar.gz
+wget -c ftp://sources.redhat.com/pub/newlib/$NEWLIB.tar.gz
+wget -c ftp://ftp.gnu.org/gnu/gdb/${GDB}.tar.bz2
+cd ..
+echo "Starting Build..."
+echo
+mkdir build
+echo "Building binutils"
+echo
+tar xfj $SRC/$BINUTILS.tar.bz2
+cd build
+../$BINUTILS/configure --target=$TARGET --prefix=$PREFIX \
+--disable-multilib --with-gnu-as --with-pkgversion='S2 rim cross' \
+--with-gnu-ld --disable-nls --disable-werror --with-sysroot=/home/lchouinard/.rim/roots/Linux/Ubuntu/lts10.4/i386
+make $PARALLEL
+make install
+cd ..
+rm -rf build/* $BINUTILS
+echo "Building GCC pass 1"
+tar xfj $SRC/$GCC.tar.bz2
+# the compiler math prereqs
+tar -jxf $SRC/$GMP.tar.bz2
+tar -jxf $SRC/$MPFR.tar.bz2
+tar -zxf $SRC/$MPC.tar.gz
+cd $GCC
+mv ../$GMP gmp
+mv ../$MPFR mpfr
+mv ../$MPC mpc
+cd ../build
+../$GCC/configure --target=$TARGET --prefix=$PREFIX --with-pkgversion='S2 rim cross' \
+--disable-multilib --enable-languages="c,c++" --with-sysroot=/home/lchouinard/.rim/roots/Linux/Ubuntu/lts10.4/i386 \
+--with-gmp-include=$(pwd)/gmp --with-gmp-lib=$(pwd)/gmp/.libs \
+--with-mpfr-include=$(pwd)/mpfr --with-mpfr-lib=$(pwd)/mpfr/.libs \
+--without-headers --disable-shared --disable-nls --with-gnu-as --with-gnu-ld
+make $PARALLEL all-gcc
+make install-gcc
+cd ..
+rm -rf build/* # (We retain the GCC directory for pass 2)
+echo "Building GDB"
+echo
+tar xfj $SRC/${GDB}a.tar.bz2
+cd build
+../$GDB/configure --target=$TARGET --prefix=$PREFIX \
+--enable-interwork --disable-multilib
+make all
+make install
+cd ..
+rm -rf build $GDB
+echo "Lets see if it compiles without errors..."
+echo 'main(){}' > dummy.c
+$PREFIX/bin/$TARGET-gcc-4.5.1 dummy.c -o dummy
+ls -l dummy
+rm dummy dummy.c a.out
+echo "cool! that's a start"
+echo "Compiler Finished for "$TARGET
+# All that should be left now is this script, the new toolchain and the packages.
+# Save the packages for other tuned toolchains.
